@@ -2,7 +2,8 @@
 from collections import defaultdict
 from datetime import date, timedelta
 
-from django.db.models import Q
+from django.db.models import Q,F, Sum
+ 
 from django.utils import timezone
 
 from rentals.models import Rental, RentalItem
@@ -127,3 +128,27 @@ def available_quantity(
         0,
         product.total_quantity - committed,
     )
+    
+    
+
+def physically_outstanding_by_product(shop, product_ids):
+    records = (
+        RentalItem.objects
+        .filter(
+            rental__shop=shop,
+            rental__status=Rental.Status.ACTIVE,
+            product_id__in=product_ids,
+        )
+        .values("product_id")
+        .annotate(
+            outstanding=Sum(
+                F("quantity") - F("returned_quantity")
+            )
+        )
+    )
+
+    return {
+        record["product_id"]: record["outstanding"]
+        for record in records
+    }
+

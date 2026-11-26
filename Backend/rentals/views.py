@@ -36,6 +36,47 @@ from .services import validate_booking_dates
 
 from .services import create_rental
 
+from .serializers import RentalReturnSerializer
+
+from .services import (
+    dispatch_rental,
+    return_rental_items,
+    cancel_rental,
+    complete_rental,
+)
+
+from .services import load_rental_details
+
+from .models import Rental
+from .serializers import RentalListSerializer
+
+from .services import rental_detail_prefetches
+
+from .filters import RentalFilter
+
+class RentalDetailView(generics.RetrieveAPIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsShopMember,
+    ]
+
+    serializer_class = RentalReadSerializer
+
+    filter_backends = []
+
+    def get_queryset(self):
+        shop = get_user_shop(self.request.user)
+
+        return (
+            Rental.objects
+            .filter(shop=shop)
+            .select_related("customer")
+            .prefetch_related(
+                *rental_detail_prefetches()
+            )
+        )
+
 
 class CustomerListCreateView(generics.ListCreateAPIView):
 
@@ -79,11 +120,48 @@ class CustomerDetailView(generics.RetrieveUpdateAPIView):
         )
         
 
-class RentalCreateView(APIView):
+
+class RentalCreateView(generics.ListAPIView):
+
     permission_classes = [
         IsAuthenticated,
         IsShopMember,
     ]
+
+    serializer_class = RentalListSerializer
+    
+    filterset_class = RentalFilter
+
+    search_fields = [
+        "customer__name",
+        "customer__phone",
+    ]
+
+    ordering_fields = [
+        "id",
+        "start_date",
+        "end_date",
+        "created_at",
+    ]
+
+    ordering = [
+        "-created_at",
+        "-id",
+    ]
+
+    def get_queryset(self):
+        shop = get_user_shop(self.request.user)
+
+        return (
+            Rental.objects
+            .filter(shop=shop)
+            .select_related("customer")
+            .prefetch_related(
+                "items",
+                "payments",
+            )
+            .order_by("-created_at", "-pk")
+        )
 
     @extend_schema(
         request=RentalBookingSerializer,
@@ -94,7 +172,9 @@ class RentalCreateView(APIView):
             data=request.data
         )
 
-        serializer.is_valid(raise_exception=True)
+        serializer.is_valid(
+            raise_exception=True
+        )
 
         shop = get_user_shop(request.user)
 
@@ -103,10 +183,7 @@ class RentalCreateView(APIView):
             **serializer.validated_data,
         )
 
-        prefetch_related_objects(
-            [rental],
-            "items",
-        )
+        load_rental_details(rental)
 
         response_serializer = RentalReadSerializer(
             rental
@@ -116,7 +193,7 @@ class RentalCreateView(APIView):
             response_serializer.data,
             status=status.HTTP_201_CREATED,
         )
-        
+      
 
 class ProductAvailabilityView(APIView):
     permission_classes = [
@@ -174,4 +251,114 @@ class ProductAvailabilityView(APIView):
 
         return Response(
             AvailabilityResponseSerializer(result).data
+        )
+
+
+class RentalDispatchView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsShopMember,
+    ]
+
+    @extend_schema(
+        request=None,
+        responses={200: RentalReadSerializer},
+    )
+    def post(self, request, pk):
+        shop = get_user_shop(request.user)
+
+        rental = dispatch_rental(
+            shop=shop,
+            rental_id=pk,
+        )
+
+        return Response(
+            RentalReadSerializer(rental).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class RentalReturnView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsShopMember,
+    ]
+
+    @extend_schema(
+        request=RentalReturnSerializer,
+        responses={200: RentalReadSerializer},
+    )
+    def post(self, request, pk):
+        serializer = RentalReturnSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        shop = get_user_shop(request.user)
+
+        rental = return_rental_items(
+            shop=shop,
+            rental_id=pk,
+            items=serializer.validated_data["items"],
+        )
+
+        return Response(
+            RentalReadSerializer(rental).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+
+class RentalCancelView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsShopMember,
+    ]
+
+    @extend_schema(
+        request=None,
+        responses={200: RentalReadSerializer},
+    )
+    def post(self, request, pk):
+        shop = get_user_shop(request.user)
+
+        rental = cancel_rental(
+            shop=shop,
+            rental_id=pk,
+        )
+
+        return Response(
+            RentalReadSerializer(rental).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class RentalCompleteView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+        IsShopMember,
+    ]
+
+    @extend_schema(
+        request=None,
+        responses={200: RentalReadSerializer},
+    )
+    def post(self, request, pk):
+        shop = get_user_shop(request.user)
+
+        rental = complete_rental(
+            shop=shop,
+            rental_id=pk,
+        )
+
+        return Response(
+            RentalReadSerializer(rental).data,
+            status=status.HTTP_200_OK,
         )
