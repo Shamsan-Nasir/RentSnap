@@ -23,3 +23,20 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
         ]
+
+
+
+
+class ProductStatusSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Product
+        fields = ["is_active"]
+
+    def validate(self, attrs):
+        if "is_active" not in attrs:
+            raise serializers.ValidationError({
+                "is_active": "This field is required."
+            })
+
+        return attrs
